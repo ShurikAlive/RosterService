@@ -34,7 +34,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/RosterInsert'
+              $ref: '#/components/schemas/RosterEdit'
         required: true
       responses:
         "201":
@@ -188,7 +188,7 @@ components:
           - id: c01d7cf6-ec3f-47f0-9556-a5d6e9009a43
           - id: c01d7cf6-ec3f-47f0-9556-a5d6e9009a43
           id: c01d7cf6-ec3f-47f0-9556-a5d6e9009a43
-    RosterInsert:
+    RosterEdit:
       required:
       - idUser
       - name
@@ -202,19 +202,6 @@ components:
           type: string
           description: ID user
           example: c01d7cf6-ec3f-47f0-9556-a5d6e9009a43
-        units:
-          type: array
-          items:
-            $ref: '#/components/schemas/Unit'
-    RosterEdit:
-      required:
-      - name
-      - units
-      properties:
-        name:
-          type: string
-          description: NAME roster
-          example: Alpha FireTeam
         units:
           type: array
           items:

@@ -11,6 +11,8 @@ package swagger
 type RosterEdit struct {
 	// NAME roster
 	Name string `json:"name"`
+	// ID user
+	IdUser string `json:"idUser"`
 
 	Units []Unit `json:"units"`
 }

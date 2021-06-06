@@ -1,31 +1,46 @@
 package app
 
 import (
-	Model "RosterService/pkg/Roster/model"
+	Model "RosterService/pkg/roster/model"
 	"errors"
+	uuid "github.com/nu7hatch/gouuid"
+	"sync"
 )
 
 var ErrorRosterIdNotExist = errors.New("roster id not found!")
+var ErrorRosterExist = errors.New("roster exist!")
+var ErrorAccessUserRoster = errors.New("error access user roster!")
 
-type IRosterDB interface {
+type RosterRepository interface {
 	GetAllRosters() ([]Model.Roster, error)
-	GetRosterInDBById(id string) (Model.Roster, error)
+	GetRosterById(id string) (Model.Roster, error)
 	DeleteRoster(id string) (string, error)
-	GetRosterIdInDBById(id string) (string, error)
+	GetRosterIdById(id string) (string, error)
+	GetRosterIdByParams(params RequiredParameters) (string, error)
+	InsertNewRoster(roster Model.Roster) (string, error)
+	UpdateRoster(roster Model.Roster) (string, error)
+	GetOwnerRoster(id string) (string, error)
 }
 
-type IEquipmentService interface {
+type EquipmentRepository interface {
 	GetEquipmentInfo(idEquipment string) (Model.EquipmentDetailedInfo, error)
 }
 
-type IUnitService interface {
+type UnitRepository interface {
 	GetUnitInfo(idUnit string) (Model.UnitDetailedInfo, error)
 }
 
+type RequiredParameters struct {
+	Name string
+	IdUser string
+}
+
 type RosterApp struct {
-	db IRosterDB
-	unitService IUnitService
-	equipmentService IEquipmentService
+	db RosterRepository
+	unitService UnitRepository
+	equipmentService EquipmentRepository
+
+	mutex *sync.Mutex
 }
 
 type EquipmentAppData struct {
@@ -44,11 +59,18 @@ type RosterAppData struct {
 	Units []UnitAppData
 }
 
-func CreateRosterApp(db IRosterDB, unitService IUnitService, equipmentService IEquipmentService) RosterApp {
-	return RosterApp{db, unitService, equipmentService}
+type EditRosterAppData struct {
+	Name string
+	IdUser string
+	Units []UnitAppData
 }
 
-func (app *RosterApp) convertRosterToRosterAppData(roster Model.Roster) RosterAppData {
+func CreateRosterApp(db RosterRepository, unitService UnitRepository, equipmentService EquipmentRepository) RosterApp {
+	var mutex = &sync.Mutex{}
+	return RosterApp{db, unitService, equipmentService, mutex}
+}
+
+func (app *RosterApp) createRosterAppData(roster Model.Roster) RosterAppData {
 	rosterApp := RosterAppData {
 		roster.Id,
 		roster.Name,
@@ -75,8 +97,46 @@ func (app *RosterApp) convertRosterToRosterAppData(roster Model.Roster) RosterAp
 	return rosterApp
 }
 
+func (app *RosterApp) createRosterAppById(id string, roster EditRosterAppData) RosterAppData {
+	rosterApp := RosterAppData {
+		id,
+		roster.Name,
+		roster.IdUser,
+		roster.Units,
+	}
+
+	return rosterApp
+}
+
+func (app *RosterApp) createRosterInputData(rosterApp RosterAppData) Model.RosterInput {
+	rosterIn := Model.RosterInput {
+		rosterApp.Id,
+		rosterApp.Name,
+		rosterApp.IdUser,
+		[]Model.UnitInput{},
+	}
+
+	for i := 0; i < len(rosterApp.Units); i++ {
+		unit := rosterApp.Units[i]
+		unitApp := Model.UnitInput {
+			unit.Id,
+			[]Model.EquipmentInput{},
+		}
+
+		for j := 0; j < len(unit.Equipments); j++ {
+			equipment := unit.Equipments[j]
+			equipmentApp := Model.EquipmentInput{equipment.Id}
+			unitApp.Equipments = append(unitApp.Equipments, equipmentApp)
+		}
+
+		rosterIn.Units = append(rosterIn.Units, unitApp)
+	}
+
+	return rosterIn
+}
+
 func (app *RosterApp) rosterIdExist(id string) bool {
-	rosterId, err := app.db.GetRosterIdInDBById(id)
+	rosterId, err := app.db.GetRosterIdById(id)
 	return (err == nil) && (rosterId != "")
 }
 
@@ -102,7 +162,7 @@ func (app *RosterApp) getUnitEqipmentDetailInfo(equipments []Model.Equipment) ([
 	return equipmentsDeatil, nil
 }
 
-// TODO БУДУ ИСПОЛЬЗОВАТЬ ДЛЯ ДАЛЬНЕЙШИХ ПРОВЕРОК НА БИЗНЕС ПРАВИЛА ПРИ ДОБАВЛЕНИИ И ИЗМЕНЕНИИ РОСТЕРА
+// БУДУ ИСПОЛЬЗОВАТЬ ДЛЯ ДАЛЬНЕЙШИХ ПРОВЕРОК НА БИЗНЕС ПРАВИЛА ПРИ ДОБАВЛЕНИИ И ИЗМЕНЕНИИ РОСТЕРА
 func (app *RosterApp) getFullRosterInformation(roster Model.Roster) (Model.RosterDetailedInfo, error) {
 	rosterDetail := Model.RosterDetailedInfo {
 		roster.Id,
@@ -130,6 +190,16 @@ func (app *RosterApp) getFullRosterInformation(roster Model.Roster) (Model.Roste
 	return rosterDetail, nil
 }
 
+func (app *RosterApp) generateId() (string, error) {
+	u, err := uuid.NewV4()
+	if err != nil {
+		return "", err
+	}
+
+	id := u.String()
+	return id, nil
+}
+
 func (app *RosterApp) GetAllRosters() ([]RosterAppData, error) {
 	var rosters []RosterAppData
 	rostersDB, err := app.db.GetAllRosters()
@@ -139,7 +209,7 @@ func (app *RosterApp) GetAllRosters() ([]RosterAppData, error) {
 
 	for i := 0; i < len(rostersDB); i++ {
 		rosterDB := rostersDB[i]
-		rosterApp := app.convertRosterToRosterAppData(rosterDB)
+		rosterApp := app.createRosterAppData(rosterDB)
 		rosters = append(rosters, rosterApp)
 	}
 
@@ -147,11 +217,11 @@ func (app *RosterApp) GetAllRosters() ([]RosterAppData, error) {
 }
 
 func (app *RosterApp) GetRosterById(id string) (RosterAppData, error) {
-	roster, err := app.db.GetRosterInDBById(id)
+	roster, err := app.db.GetRosterById(id)
 	if err != nil {
 		return RosterAppData {}, err
 	}
-	rosterApp := app.convertRosterToRosterAppData(roster)
+	rosterApp := app.createRosterAppData(roster)
 	return rosterApp, nil
 }
 
@@ -160,9 +230,102 @@ func (app *RosterApp) DeleteById(id string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	app.mutex.Lock()
 	deleteId, err := app.db.DeleteRoster(id)
+	app.mutex.Unlock()
 	if err != nil {
 		return "", err
 	}
 	return deleteId, nil
+}
+
+func (app *RosterApp) assertRosterExists(roster Model.Roster) error {
+	rp := RequiredParameters{roster.Name, roster.IdUser}
+	id, err:= app.db.GetRosterIdByParams(rp)
+	if err != nil {
+		return err
+	}
+	if id != "" {
+		return ErrorRosterExist
+	}
+	return nil
+}
+
+func (app *RosterApp) AddNewRoster(editRoster EditRosterAppData) (string, error) {
+	id, err := app.generateId()
+	if err != nil {
+		return "", err
+	}
+	rosterApp := app.createRosterAppById(id, editRoster)
+	rosterInData := app.createRosterInputData(rosterApp)
+	roster, err := Model.CreateRoster(rosterInData)
+	if err != nil {
+		return "", err
+	}
+	err = app.assertRosterExists(roster)
+	if err != nil {
+		return "", err
+	}
+	rosterFullInfo, err:= app.getFullRosterInformation(roster)
+	if err != nil {
+		return "", err
+	}
+	err = rosterFullInfo.IsRosterValid()
+	if err != nil {
+		return "", err
+	}
+	app.mutex.Lock()
+	insertId, err := app.db.InsertNewRoster(roster)
+	app.mutex.Unlock()
+	if err != nil {
+		return "", err
+	}
+
+	return insertId, nil
+}
+
+func (app *RosterApp) assertIsUserCantUpdateRoster(roster RosterAppData) error {
+	ownerId, err := app.db.GetOwnerRoster(roster.Id)
+	if err != nil {
+		return err
+	}
+
+	if roster.IdUser != ownerId {
+		return ErrorAccessUserRoster
+	}
+
+	return nil
+}
+
+func (app *RosterApp) UpdateRosterById(id string, editRoster EditRosterAppData) (string, error) {
+	err := app.assertRosterNotExist(id)
+	if err != nil {
+		return "", err
+	}
+	rosterApp := app.createRosterAppById(id, editRoster)
+	err = app.assertIsUserCantUpdateRoster(rosterApp)
+	if err != nil {
+		return "", err
+	}
+	rosterInData := app.createRosterInputData(rosterApp)
+	roster, err := Model.CreateRoster(rosterInData)
+	if err != nil {
+		return "", err
+	}
+	rosterFullInfo, err:= app.getFullRosterInformation(roster)
+	if err != nil {
+		return "", err
+	}
+	err = rosterFullInfo.IsRosterValid()
+	if err != nil {
+		return "", err
+	}
+	app.mutex.Lock()
+	updateId, err := app.db.UpdateRoster(roster)
+	app.mutex.Unlock()
+	if err != nil {
+		return "", err
+	}
+
+	return updateId, nil
 }

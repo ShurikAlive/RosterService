@@ -1,7 +1,10 @@
-package cmd
+package main
 
 import (
-	"RosterService/cmd/DB"
+	DB "RosterService/pkg/common/infrastructure"
+	Roster "RosterService/pkg/roster/infrastructure/transport"
+	Swagger "RosterService/swagger/go"
+	SwaggerUnitService "RosterService/swagger/unitService"
 	"context"
 	"github.com/gorilla/mux"
 	log "github.com/sirupsen/logrus"
@@ -9,20 +12,24 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
-	Swagger "RosterService/Swagger/go"
-	SwaggerUnitService "RosterService/Swagger/UnitService"
-	Roster "RosterService/pkg/Roster/infrastructure/transport"
 )
 
 func main() {
 	serverParameters := initServerParameters()
 	initLogFile()
 
-	db, err := DB.InitDB()
+	db, err := DB.InitDB(serverParameters.DBType, serverParameters.DBUsername, serverParameters.DBPassword, serverParameters.DBName)
 	if err != nil {
+		log.Fatal(err)
 		return
 	}
 	defer db.DisconectDB()
+
+	err = db.MakeMigrationDB(serverParameters.DBMigrationsPath)
+	if err != nil {
+		log.Fatal(err)
+		return
+	}
 
 	killSignalChan := getKillSignalChan()
 	srv := startServer(db, serverParameters)
@@ -41,11 +48,6 @@ func initServerParameters() (*Config) {
 
 func initLogFile() {
 	log.SetFormatter(&log.JSONFormatter{})
-	file, err := os.OpenFile("my.log", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0666)
-	if err == nil {
-		log.SetOutput(file)
-		defer file.Close()
-	}
 }
 
 func InitUnitService(conf *Config) *SwaggerUnitService.APIClient {
@@ -74,9 +76,9 @@ func InitRosterHendlerFunc(router *mux.Router, connection *DB.Connection, conf *
 	unitHandlerFuncs := map[string]http.HandlerFunc {
 		"RosterGet" : rosterServer.RosterGet,
 		"RosterPost" : rosterServer.RosterPost,
-		"RosterRosterIdDelete" : rosterServer.RosterRosterIdDelete,
-		"RosterRosterIdGet" : rosterServer.RosterRosterIdGet,
-		"RosterRosterIdPut" : rosterServer.RosterRosterIdPut,
+		"RosterRosterIdDelete" : rosterServer.RosterIdDelete,
+		"RosterRosterIdGet" : rosterServer.RosterIdGet,
+		"RosterRosterIdPut" : rosterServer.RosterIdPut,
 	}
 
 	for name, unitHendlerFunc := range unitHandlerFuncs {

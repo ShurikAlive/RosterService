@@ -1,16 +1,16 @@
 package DB
 
 import (
-	"RosterService/cmd/DB"
-	App "RosterService/pkg/Roster/app"
-	Model "RosterService/pkg/Roster/model"
+	DB "RosterService/pkg/common/infrastructure"
+	App "RosterService/pkg/roster/app"
+	Model "RosterService/pkg/roster/model"
 )
 
 type MySQLDB struct {
 	Connection *DB.Connection
 }
 
-func NewRosterDB(connection *DB.Connection) App.IRosterDB {
+func NewRosterDB(connection *DB.Connection) App.RosterRepository {
 	if connection.Db == nil {
 		return nil
 	}
@@ -96,7 +96,7 @@ func (db *MySQLDB) GetAllRosters() ([]Model.Roster, error) {
 	return rosters, nil
 }
 
-func (db *MySQLDB) GetRosterInDBById(id string) (Model.Roster, error) {
+func (db *MySQLDB) GetRosterById(id string) (Model.Roster, error) {
 	rows, err := db.Connection.Db.Query("SELECT * FROM roster_db.rosters WHERE id = ?;", id)
 	if err != nil {
 		return Model.Roster{}, err
@@ -105,7 +105,6 @@ func (db *MySQLDB) GetRosterInDBById(id string) (Model.Roster, error) {
 
 	roster := Model.Roster{}
 	for rows.Next() {
-		roster := Model.Roster{}
 		err = rows.Scan(&roster.Id,
 			&roster.Name,
 			&roster.IdUser)
@@ -155,7 +154,7 @@ func (db *MySQLDB) DeleteRoster(id string) (string, error) {
 	return id, nil
 }
 
-func (db *MySQLDB) GetRosterIdInDBById(id string) (string, error) {
+func (db *MySQLDB) GetRosterIdById(id string) (string, error) {
 	rows, err := db.Connection.Db.Query("SELECT id FROM roster_db.rosters WHERE id = ?;", id)
 	if err != nil {
 		return "", err
@@ -171,4 +170,136 @@ func (db *MySQLDB) GetRosterIdInDBById(id string) (string, error) {
 	}
 
 	return idDB, nil
+}
+
+func (db *MySQLDB) GetRosterIdByParams(params App.RequiredParameters) (string, error) {
+	rows, err := db.Connection.Db.Query("SELECT id FROM roster_db.rosters WHERE idUser = ? AND Name = ?;", params.IdUser, params.Name)
+	if err != nil {
+		return "", err
+	}
+	defer rows.Close()
+
+	idDB := ""
+	for rows.Next() {
+		err = rows.Scan(&idDB)
+		if err != nil {
+			return "", err
+		}
+	}
+
+	return idDB, nil
+}
+
+func (db *MySQLDB) InsertNewRoster(roster Model.Roster) (string, error) {
+	tx, err := db.Connection.Db.Begin()
+	if err != nil {
+		return "", err
+	}
+
+	_, err = tx.Exec("INSERT INTO `roster_db`.`rosters` (`id`,`Name`,	`idUser`) VALUES (?,?,?);", roster.Id, roster.Name, roster.IdUser)
+	if err != nil {
+		tx.Rollback()
+		return "", err
+	}
+
+	for i := 0; i < len(roster.Units); i++ {
+		unit := roster.Units[i]
+
+		_, err = tx.Exec("INSERT INTO `roster_db`.`roster_units` (`idRoster`,`idUnit`) VALUES (?,?);", roster.Id, unit.Id)
+		if err != nil {
+			tx.Rollback()
+			return "", err
+		}
+
+		for j := 0; j < len(unit.Equipments); j++ {
+			equipment := unit.Equipments[j]
+
+			_, err = tx.Exec("INSERT INTO `roster_db`.`roster_equipments` (`idRoster`,`idUnit`,`idEquipment`) VALUES (?,?,?);",
+				roster.Id, unit.Id, equipment.Id)
+			if err != nil {
+				tx.Rollback()
+				return "", err
+			}
+		}
+	}
+
+	err = tx.Commit()
+	if err != nil {
+		tx.Rollback()
+		return "", err
+	}
+
+	return roster.Id, nil
+}
+
+func (db *MySQLDB) UpdateRoster(roster Model.Roster) (string, error) {
+	tx, err := db.Connection.Db.Begin()
+	if err != nil {
+		return "", err
+	}
+
+	_, err = tx.Exec("DELETE FROM `roster_db`.`roster_equipments` WHERE idRoster = ?;", roster.Id)
+	if err != nil {
+		tx.Rollback()
+		return "", err
+	}
+
+	_, err = tx.Exec("DELETE FROM `roster_db`.`roster_units` WHERE idRoster = ?;", roster.Id)
+	if err != nil {
+		tx.Rollback()
+		return "", err
+	}
+
+	_, err = tx.Exec("UPDATE `roster_db`.`rosters` SET `Name` = ?, `idUser` = ? WHERE `id` = ?;", roster.Name, roster.IdUser, roster.Id)
+	if err != nil {
+		tx.Rollback()
+		return "", err
+	}
+
+	for i := 0; i < len(roster.Units); i++ {
+		unit := roster.Units[i]
+
+		_, err = tx.Exec("INSERT INTO `roster_db`.`roster_units` (`idRoster`,`idUnit`) VALUES (?,?);", roster.Id, unit.Id)
+		if err != nil {
+			tx.Rollback()
+			return "", err
+		}
+
+		for j := 0; j < len(unit.Equipments); j++ {
+			equipment := unit.Equipments[j]
+
+			_, err = tx.Exec("INSERT INTO `roster_db`.`roster_equipments` (`idRoster`,`idUnit`,`idEquipment`) VALUES (?,?,?);",
+				roster.Id, unit.Id, equipment.Id)
+			if err != nil {
+				tx.Rollback()
+				return "", err
+			}
+		}
+	}
+
+	err = tx.Commit()
+	if err != nil {
+		tx.Rollback()
+		return "", err
+	}
+
+	return roster.Id, nil
+}
+
+func (db *MySQLDB) GetOwnerRoster(id string) (string, error) {
+	rows, err := db.Connection.Db.Query("SELECT idUser FROM roster_db.rosters WHERE id = ?;", id)
+	if err != nil {
+		return "", err
+	}
+	defer rows.Close()
+
+	userId := ""
+	for rows.Next() {
+		err = rows.Scan(&userId)
+		if err != nil {
+			return "", err
+		}
+	}
+
+	return userId, nil
 }

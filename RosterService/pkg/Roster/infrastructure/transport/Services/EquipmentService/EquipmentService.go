@@ -1,9 +1,9 @@
 package EquipmentService
 
 import (
-	Swagger "RosterService/Swagger/UnitService"
-	App "RosterService/pkg/Roster/app"
-	Model "RosterService/pkg/Roster/model"
+	App "RosterService/pkg/roster/app"
+	Model "RosterService/pkg/roster/model"
+	Swagger "RosterService/swagger/unitService"
 	"errors"
 	"net/http"
 )
@@ -14,7 +14,7 @@ type EquipmentService struct {
 	EquipmentApiService *Swagger.APIClient
 }
 
-func NewEquipmentService(equipmentService *Swagger.APIClient) App.IEquipmentService {
+func NewEquipmentService(equipmentService *Swagger.APIClient) App.EquipmentRepository {
 	return &EquipmentService{equipmentService}
 }
 

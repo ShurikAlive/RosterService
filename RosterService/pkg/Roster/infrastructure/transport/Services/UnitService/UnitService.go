@@ -1,9 +1,9 @@
 package UnitService
 
 import (
-	Swagger "RosterService/Swagger/UnitService"
-	App "RosterService/pkg/Roster/app"
-	Model "RosterService/pkg/Roster/model"
+	App "RosterService/pkg/roster/app"
+	Model "RosterService/pkg/roster/model"
+	Swagger "RosterService/swagger/unitService"
 	"errors"
 	"net/http"
 )
@@ -14,7 +14,7 @@ type UnitService struct {
 	UnitApiService *Swagger.APIClient
 }
 
-func NewUnitService(unitService *Swagger.APIClient) App.IUnitService {
+func NewUnitService(unitService *Swagger.APIClient) App.UnitRepository {
 	return &UnitService{unitService}
 }
 
