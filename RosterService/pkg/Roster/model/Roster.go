@@ -7,6 +7,9 @@ var ErrorRosterName = errors.New("error roster name!")
 var ErrorDoubleUnit = errors.New("error double unit!")
 var ErrorRosterUserId = errors.New("error roster user id!")
 
+var RosterStatusActive = int32(0)
+var RosterStatusNeedUserUpdate = int32(1)
+
 var COUNT_UNIT_IN_ROSTER = 4
 
 type Equipment struct {
@@ -22,6 +25,8 @@ type Roster struct {
 	Id string
 	Name string
 	IdUser string
+	// status roster. 0 - valid, 1 - need update
+	Status int32
 	Units []Unit
 }
 
@@ -38,6 +43,8 @@ type RosterInput struct {
 	Id     string
 	Name   string
 	IdUser string
+	// status roster. 0 - valid, 1 - need update
+	Status int32
 	Units  []UnitInput
 }
 
@@ -46,6 +53,7 @@ func createRoster(inRoster RosterInput) Roster {
 		inRoster.Id,
 		inRoster.Name,
 		inRoster.IdUser,
+		inRoster.Status,
 		[]Unit{},
 	}
 

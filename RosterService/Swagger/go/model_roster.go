@@ -15,6 +15,8 @@ type Roster struct {
 	Name string `json:"name"`
 	// ID user
 	IdUser string `json:"idUser"`
+	// status roster. 0 - valid, 1 - need update
+	Status int32 `json:"status"`
 
 	Units []Unit `json:"units"`
 }

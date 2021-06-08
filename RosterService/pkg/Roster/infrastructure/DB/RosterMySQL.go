@@ -79,7 +79,8 @@ func (db *MySQLDB) GetAllRosters() ([]Model.Roster, error) {
 		roster := Model.Roster{}
 		err = rows.Scan(&roster.Id,
 			&roster.Name,
-			&roster.IdUser)
+			&roster.IdUser,
+			&roster.Status)
 		if err != nil {
 			return []Model.Roster{}, err
 		}
@@ -107,7 +108,8 @@ func (db *MySQLDB) GetRosterById(id string) (Model.Roster, error) {
 	for rows.Next() {
 		err = rows.Scan(&roster.Id,
 			&roster.Name,
-			&roster.IdUser)
+			&roster.IdUser,
+			&roster.Status)
 		if err != nil {
 			return Model.Roster{}, err
 		}
@@ -196,7 +198,7 @@ func (db *MySQLDB) InsertNewRoster(roster Model.Roster) (string, error) {
 		return "", err
 	}
 
-	_, err = tx.Exec("INSERT INTO `roster_db`.`rosters` (`id`,`Name`,	`idUser`) VALUES (?,?,?);", roster.Id, roster.Name, roster.IdUser)
+	_, err = tx.Exec("INSERT INTO `roster_db`.`rosters` (`id`,`Name`,	`idUser`, `status`) VALUES (?,?,?,?);", roster.Id, roster.Name, roster.IdUser, roster.Status)
 	if err != nil {
 		tx.Rollback()
 		return "", err
@@ -250,7 +252,7 @@ func (db *MySQLDB) UpdateRoster(roster Model.Roster) (string, error) {
 		return "", err
 	}
 
-	_, err = tx.Exec("UPDATE `roster_db`.`rosters` SET `Name` = ?, `idUser` = ? WHERE `id` = ?;", roster.Name, roster.IdUser, roster.Id)
+	_, err = tx.Exec("UPDATE `roster_db`.`rosters` SET `Name` = ?, `idUser` = ?, `status` = ? WHERE `id` = ?;", roster.Name, roster.IdUser, roster.Status, roster.Id)
 	if err != nil {
 		tx.Rollback()
 		return "", err
@@ -302,4 +304,62 @@ func (db *MySQLDB) GetOwnerRoster(id string) (string, error) {
 	}
 
 	return userId, nil
+}
+
+func (db *MySQLDB) GetRostersIdsByUnitId(unitId string) ([]string, error) {
+	rows, err := db.Connection.Db.Query("SELECT DISTINCT idRoster FROM roster_db.roster_units WHERE idUnit = ?;", unitId)
+	if err != nil {
+		return []string{}, err
+	}
+	defer rows.Close()
+
+	var ids []string
+	for rows.Next() {
+		var id string
+		err = rows.Scan(&id)
+		ids = append(ids, id)
+	}
+
+	return ids, nil
+}
+
+func (db *MySQLDB) UpdateRosterStatus(id string, status int32) error {
+	_, err := db.Connection.Db.Exec("UPDATE `roster_db`.`rosters` SET `status` = ? WHERE `id` = ?;", status, id)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (db *MySQLDB) DeleteUnitInRoster(idRoster string, idUnit string) error {
+	_, err := db.Connection.Db.Exec("DELETE FROM `roster_db`.`roster_units` WHERE idRoster = ? AND idUnit = ?;", idRoster, idUnit)
+	if err != nil {
+		return  err
+	}
+	return nil
+}
+
+func (db *MySQLDB) GetRostersIdsByEquipmentId(equipmentId string) ([]string, error) {
+	rows, err := db.Connection.Db.Query("SELECT DISTINCT idRoster FROM roster_db.roster_equipments WHERE idEquipment = ?;", equipmentId)
+	if err != nil {
+		return []string{}, err
+	}
+	defer rows.Close()
+
+	var ids []string
+	for rows.Next() {
+		var id string
+		err = rows.Scan(&id)
+		ids = append(ids, id)
+	}
+
+	return ids, nil
+}
+
+func (db *MySQLDB) DeleteEquipmentInRoster(idRoster string, equipmentId string) error {
+	_, err := db.Connection.Db.Exec("DELETE FROM `roster_db`.`roster_equipments` WHERE idRoster = ? AND idEquipment = ?;", idRoster, equipmentId)
+	if err != nil {
+		return  err
+	}
+	return nil
 }

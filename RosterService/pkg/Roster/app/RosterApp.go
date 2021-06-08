@@ -20,6 +20,11 @@ type RosterRepository interface {
 	InsertNewRoster(roster Model.Roster) (string, error)
 	UpdateRoster(roster Model.Roster) (string, error)
 	GetOwnerRoster(id string) (string, error)
+	GetRostersIdsByUnitId(unitId string) ([]string, error)
+	UpdateRosterStatus(id string, status int32) error
+	DeleteUnitInRoster(idRoster string, idUnit string) error
+	GetRostersIdsByEquipmentId(equipmentId string) ([]string, error)
+	DeleteEquipmentInRoster(idRoster string, equipmentId string) error
 }
 
 type EquipmentRepository interface {
@@ -56,6 +61,8 @@ type RosterAppData struct {
 	Id string
 	Name string
 	IdUser string
+	// status roster. 0 - valid, 1 - need update
+	Status int32
 	Units []UnitAppData
 }
 
@@ -75,6 +82,7 @@ func (app *RosterApp) createRosterAppData(roster Model.Roster) RosterAppData {
 		roster.Id,
 		roster.Name,
 		roster.IdUser,
+		roster.Status,
 		[]UnitAppData{},
 	}
 
@@ -97,11 +105,12 @@ func (app *RosterApp) createRosterAppData(roster Model.Roster) RosterAppData {
 	return rosterApp
 }
 
-func (app *RosterApp) createRosterAppById(id string, roster EditRosterAppData) RosterAppData {
+func (app *RosterApp) createRosterAppById(id string, status int32, roster EditRosterAppData) RosterAppData {
 	rosterApp := RosterAppData {
 		id,
 		roster.Name,
 		roster.IdUser,
+		status,
 		roster.Units,
 	}
 
@@ -113,6 +122,8 @@ func (app *RosterApp) createRosterInputData(rosterApp RosterAppData) Model.Roste
 		rosterApp.Id,
 		rosterApp.Name,
 		rosterApp.IdUser,
+		rosterApp.Status,
+
 		[]Model.UnitInput{},
 	}
 
@@ -168,6 +179,7 @@ func (app *RosterApp) getFullRosterInformation(roster Model.Roster) (Model.Roste
 		roster.Id,
 		roster.Name,
 		roster.IdUser,
+		roster.Status,
 		[]Model.RosterUnitDetailedInfo{},
 	}
 
@@ -256,7 +268,7 @@ func (app *RosterApp) AddNewRoster(editRoster EditRosterAppData) (string, error)
 	if err != nil {
 		return "", err
 	}
-	rosterApp := app.createRosterAppById(id, editRoster)
+	rosterApp := app.createRosterAppById(id, Model.RosterStatusActive, editRoster)
 	rosterInData := app.createRosterInputData(rosterApp)
 	roster, err := Model.CreateRoster(rosterInData)
 	if err != nil {
@@ -302,7 +314,7 @@ func (app *RosterApp) UpdateRosterById(id string, editRoster EditRosterAppData) 
 	if err != nil {
 		return "", err
 	}
-	rosterApp := app.createRosterAppById(id, editRoster)
+	rosterApp := app.createRosterAppById(id, Model.RosterStatusActive, editRoster)
 	err = app.assertIsUserCantUpdateRoster(rosterApp)
 	if err != nil {
 		return "", err
@@ -328,4 +340,110 @@ func (app *RosterApp) UpdateRosterById(id string, editRoster EditRosterAppData) 
 	}
 
 	return updateId, nil
+}
+
+func (app *RosterApp) UpdateEquipment(id string) error {
+	rostersIds, err := app.db.GetRostersIdsByEquipmentId(id)
+	if err != nil {
+		return err
+	}
+	for i := 0; i < len(rostersIds); i++ {
+		roster, err := app.db.GetRosterById(rostersIds[i])
+		if err != nil {
+			return err
+		}
+		rosterFullInfo, err:= app.getFullRosterInformation(roster)
+		if err != nil {
+			return err
+		}
+		err = rosterFullInfo.IsRosterValid()
+		if err != nil {
+			if err == Model.ErrorRosterCost ||
+				err == Model.ErrorCountEquipmernOnUnit ||
+				err == Model.ErrorCountEquipmernOnRoster ||
+				err == Model.ErrorUnitRole {
+				app.mutex.Lock()
+				err = app.db.UpdateRosterStatus(rostersIds[i], Model.RosterStatusNeedUserUpdate)
+				app.mutex.Unlock()
+				if err != nil {
+					return err
+				}
+			} else {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func (app *RosterApp) DeleteEquipment(id string) error {
+	rostersIds, err := app.db.GetRostersIdsByEquipmentId(id)
+	if err != nil {
+		return err
+	}
+	for i := 0; i < len(rostersIds); i++ {
+		// ОБЯЗАТЕЛЬНО В НАЧАЛЕ ПОМЕЧАЕМ ЧТО РОСТЕР НУЖДАЕТСЯ В ОБНОВЛЕНИИ
+		// ТК ЕСЛИ В НАЧАЛЕ УДАЛИТЬ, НО НА ПОМЕТКЕ ПРОИЗОЙДЕТ СБОЙ, ТО ПРИ ПОВТОРНОМ ЗАПУСКЕ МЫ НЕ СМОЖЕМ ПОМЕТИТЬ РОСТЕР КАК ТРЕБУЮЩИЙ ВНИМАНИЯ
+		// А ТАК, ПРИ ПЕРЕЗАПУСКЕ ФУНКЦИИ ГАРАНТИРУЕМ, ЧТО ЗАПИСЬ ПОВТОРНО РАССМОТРИТСЯ
+		app.mutex.Lock()
+		err = app.db.UpdateRosterStatus(rostersIds[i], Model.RosterStatusNeedUserUpdate)
+		app.mutex.Unlock()
+		if err != nil {
+			return err
+		}
+
+		app.mutex.Lock()
+		err = app.db.DeleteEquipmentInRoster(rostersIds[i], id)
+		app.mutex.Unlock()
+		if err != nil {
+			return err
+		}
+
+	}
+	return nil
+}
+
+func (app *RosterApp) UpdateUnit(id string) error {
+	// TODO СОМНЕВАЮСЬ НУЖНО ЛИ ПОМЕЧАТЬ, ТАК КАК ЛЮБОЕ ОБНОВЛЕНИЕ НЕ ПОВЛИЯЕТ НА ВАЛИДНОСТЬ САМОГО РОСТЕРА
+	/*
+	rostersIds, err := app.db.GetRostersIdsByUnitId(id)
+	if err != nil {
+		return err
+	}
+	for i := 0; i < len(rostersIds); i++ {
+		app.mutex.Lock()
+		err = app.db.UpdateRosterStatus(rostersIds[i], Model.RosterStatusNeedUserUpdate)
+		app.mutex.Unlock()
+		if err != nil {
+			return err
+		}
+	}
+	*/
+	return nil
+}
+
+func (app *RosterApp) DeleteUnit(id string) error {
+	rostersIds, err := app.db.GetRostersIdsByUnitId(id)
+	if err != nil {
+		return err
+	}
+	for i := 0; i < len(rostersIds); i++ {
+		// ОБЯЗАТЕЛЬНО В НАЧАЛЕ ПОМЕЧАЕМ ЧТО РОСТЕР НУЖДАЕТСЯ В ОБНОВЛЕНИИ
+		// ТК ЕСЛИ В НАЧАЛЕ УДАЛИТЬ, НО НА ПОМЕТКЕ ПРОИЗОЙДЕТ СБОЙ, ТО ПРИ ПОВТОРНОМ ЗАПУСКЕ МЫ НЕ СМОЖЕМ ПОМЕТИТЬ РОСТЕР КАК ТРЕБУЮЩИЙ ВНИМАНИЯ
+		// А ТАК, ПРИ ПЕРЕЗАПУСКЕ ФУНКЦИИ ГАРАНТИРУЕМ, ЧТО ЗАПИСЬ ПОВТОРНО РАССМОТРИТСЯ
+		app.mutex.Lock()
+		err = app.db.UpdateRosterStatus(rostersIds[i], Model.RosterStatusNeedUserUpdate)
+		app.mutex.Unlock()
+		if err != nil {
+			return err
+		}
+
+		app.mutex.Lock()
+		err = app.db.DeleteUnitInRoster(rostersIds[i], id)
+		app.mutex.Unlock()
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }

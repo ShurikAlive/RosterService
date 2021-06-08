@@ -8,6 +8,7 @@ import (
 	"context"
 	"github.com/gorilla/mux"
 	log "github.com/sirupsen/logrus"
+	"github.com/streadway/amqp"
 	"net/http"
 	"os"
 	"os/signal"
@@ -31,8 +32,37 @@ func main() {
 		return
 	}
 
+	conn, err := amqp.Dial(serverParameters.ConnectRabbitMQ)
+	if err != nil {
+		log.Fatal(err)
+		return
+	}
+	defer conn.Close()
+	ch, err := conn.Channel()
+	if err != nil {
+		log.Fatal(err)
+		return
+	}
+	defer ch.Close()
+	q, err := ch.QueueDeclare(
+		serverParameters.QueueNameRabbitMQ, // name
+		false,   // durable
+		false,   // delete when unused
+		false,   // exclusive
+		false,   // no-wait
+		nil,     // arguments
+	)
+	if err != nil {
+		log.Fatal(err)
+		return
+	}
+
 	killSignalChan := getKillSignalChan()
-	srv := startServer(db, serverParameters)
+	srv, err := startServer(db, serverParameters, ch, q)
+	if err != nil {
+		log.Fatal(err)
+		return
+	}
 	waitForKillSignal(killSignalChan)
 	srv.Shutdown(context.Background())
 }
@@ -68,10 +98,13 @@ func InitEquipmentService(conf *Config) *SwaggerUnitService.APIClient {
 	return SwaggerUnitService.NewAPIClient(config)
 }
 
-func InitRosterHendlerFunc(router *mux.Router, connection *DB.Connection, conf *Config) (*mux.Router) {
+func InitRosterHendlerFunc(router *mux.Router, connection *DB.Connection, conf *Config, channelRebbitMQ *amqp.Channel, queueRebbitMQ amqp.Queue) (*mux.Router, error) {
 	unitService := InitUnitService(conf)
 	equipmentService := InitEquipmentService(conf)
-	rosterServer := Roster.CreateRosterServer(connection, unitService, equipmentService)
+	rosterServer, err := Roster.CreateRosterServer(connection, unitService, equipmentService, channelRebbitMQ, queueRebbitMQ)
+	if err != nil {
+		return nil, err
+	}
 
 	unitHandlerFuncs := map[string]http.HandlerFunc {
 		"RosterGet" : rosterServer.RosterGet,
@@ -85,18 +118,21 @@ func InitRosterHendlerFunc(router *mux.Router, connection *DB.Connection, conf *
 		router.GetRoute(name).Handler(unitHendlerFunc)
 	}
 
-	return router
+	return router, nil
 }
 
-func startServer(connection *DB.Connection, conf *Config) *http.Server {
+func startServer(connection *DB.Connection, conf *Config, channelRebbitMQ *amqp.Channel, queueRebbitMQ amqp.Queue) (*http.Server, error) {
 	router := Swagger.NewRouter()
-	router = InitRosterHendlerFunc(router, connection, conf)
+	router, err := InitRosterHendlerFunc(router, connection, conf, channelRebbitMQ, queueRebbitMQ)
+	if err != nil {
+		return nil, err
+	}
 	log.Fatal(http.ListenAndServe(conf.ServeRESTAddress, router))
 	srv := &http.Server{Addr: conf.ServeRESTAddress, Handler: router}
 	go func() {
 		log.Fatal(srv.ListenAndServe())
 	}()
-	return srv
+	return srv, nil
 }
 
 func getKillSignalChan() chan os.Signal {

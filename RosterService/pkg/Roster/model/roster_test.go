@@ -7,6 +7,7 @@ func createValidRosterInputData() RosterInput {
 		"test roster id",
 		"test roster",
 		"test user id",
+		0,
 		[]UnitInput{{"test unit id 1", []EquipmentInput{} },
 			{"test unit id 2", []EquipmentInput{} },
 			{"test unit id 3", []EquipmentInput{} },

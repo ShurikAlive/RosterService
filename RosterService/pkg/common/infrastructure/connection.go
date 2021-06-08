@@ -70,6 +70,7 @@ func InitDB(dbType string, dbUsername string, dbPassword string, dbName string) 
 func (db *Connection) DisconectDB() {
 	if db.Db != nil {
 		db.Db.Close()
+		db.Db = nil
 	}
 }
 

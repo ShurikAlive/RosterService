@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"github.com/gorilla/mux"
 	log "github.com/sirupsen/logrus"
+	"github.com/streadway/amqp"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -19,16 +20,19 @@ import (
 type RosterServer struct {
 	app App.RosterApp
 	formatter JsonFormatter
+	eventManager RosterEventManager
 }
 
-func CreateRosterServer(connection *DB.Connection, unitService *Swagger.APIClient, equipmentService *Swagger.APIClient) *RosterServer {
+func CreateRosterServer(connection *DB.Connection, unitService *Swagger.APIClient, equipmentService *Swagger.APIClient, channelRebbitMQ *amqp.Channel, queueRebbitMQ amqp.Queue) (*RosterServer, error) {
 	rosterServer := new(RosterServer)
 	db := MySQL.NewRosterDB(connection)
 	rosterUnitService := UnitService.NewUnitService(unitService)
 	rosterEquipmentService := EquipmentService.NewEquipmentService(equipmentService)
 	rosterServer.app = App.CreateRosterApp(db, rosterUnitService, rosterEquipmentService)
+	rosterServer.eventManager = CreateRosterEventManager(channelRebbitMQ, queueRebbitMQ, &rosterServer.app, connection)
+	rosterServer.eventManager.StartEventHandling()
 	rosterServer.formatter = CreateJSONFormatter()
-	return rosterServer
+	return rosterServer, nil
 }
 
 func (s *RosterServer) getErrorCode(err error) int {

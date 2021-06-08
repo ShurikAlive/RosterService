@@ -3,6 +3,7 @@ package transport
 import (
 	App "RosterService/pkg/roster/app"
 	"encoding/json"
+	"log"
 )
 
 type JsonFormatter struct {
@@ -28,6 +29,8 @@ type Roster struct {
 	Name string `json:"name"`
 	// ID user
 	IdUser string `json:"idUser"`
+	// status roster. 0 - valid, 1 - need update
+	Status int32 `json:"status"`
 
 	Units []Unit `json:"units"`
 }
@@ -39,6 +42,12 @@ type RosterEdit struct {
 	IdUser string `json:"idUser"`
 
 	Units []Unit `json:"units"`
+}
+
+type EventJSON struct {
+	Essence string `json:"essence"`
+	TypeEvent string `json:"typeEvent"`
+	IdRecord string `json:"idRecord"`
 }
 
 func CreateJSONFormatter() JsonFormatter {
@@ -90,6 +99,7 @@ func (formatter *JsonFormatter) createRoster(roster App.RosterAppData) Roster {
 		roster.Id,
 		roster.Name,
 		roster.IdUser,
+		roster.Status,
 		[]Unit{},
 	}
 
@@ -139,4 +149,26 @@ func (formatter *JsonFormatter) ConvertAllRostersAppDataToJSON(rosters []App.Ros
 	}
 
 	return b, nil
+}
+
+func createEvent(rosterEvent EventJSON) Event {
+	event := Event{
+		rosterEvent.Essence,
+		rosterEvent.TypeEvent,
+		rosterEvent.IdRecord,
+
+	}
+
+	return event
+}
+
+func (formatter *JsonFormatter) ConvertEvent(event []byte) (Event, error) {
+	var msg EventJSON
+	err := json.Unmarshal(event, &msg)
+	if err != nil {
+		return Event{}, err
+	}
+	log.Print("Convert Event JSON: " + msg.Essence + " " + msg.TypeEvent + " " + msg.IdRecord)
+
+	return createEvent(msg), nil
 }

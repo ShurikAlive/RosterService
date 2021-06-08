@@ -7,6 +7,7 @@ func createValidRosterDetailedInfo() RosterDetailedInfo {
 		"test roster id",
 		"test roster",
 		"test user id",
+		0,
 		[]RosterUnitDetailedInfo{
 			{
 				UnitDetailedInfo {

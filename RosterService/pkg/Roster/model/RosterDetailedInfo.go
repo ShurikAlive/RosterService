@@ -51,6 +51,8 @@ type RosterDetailedInfo struct {
 	Id string
 	Name string
 	IdUser string
+	// status roster. 0 - valid, 1 - need update
+	Status int32
 	Units []RosterUnitDetailedInfo
 }
 

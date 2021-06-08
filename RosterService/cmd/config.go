@@ -16,6 +16,9 @@ type Config struct {
 	DBUsername       string `envconfig:"database_username" default:"root"`
 	DBPassword       string `envconfig:"database_password" default:"Future1994!)"`
 	DBMigrationsPath string `envconfig:"database_migrations_path" default:"file://db/migrations"`
+
+	ConnectRabbitMQ string `envconfig:"connect_rabbitmq" default:"amqp://guest:guest@localhost:5672/"`
+	QueueNameRabbitMQ string `envconfig:"queue_name_rabbitmq" default:"unitService"`
 }
 
 func ParseEnv() (*Config, error) {

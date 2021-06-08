@@ -157,6 +157,7 @@ components:
       - id
       - idUser
       - name
+      - status
       - units
       properties:
         id:
@@ -171,6 +172,10 @@ components:
           type: string
           description: ID user
           example: c01d7cf6-ec3f-47f0-9556-a5d6e9009a43
+        status:
+          type: integer
+          description: status roster. 0 - valid, 1 - need update
+          example: 0
         units:
           type: array
           items:
@@ -179,6 +184,7 @@ components:
         idUser: c01d7cf6-ec3f-47f0-9556-a5d6e9009a43
         name: Alpha FireTeam
         id: c01d7cf6-ec3f-47f0-9556-a5d6e9009a43
+        status: 0
         units:
         - equipments:
           - id: c01d7cf6-ec3f-47f0-9556-a5d6e9009a43
